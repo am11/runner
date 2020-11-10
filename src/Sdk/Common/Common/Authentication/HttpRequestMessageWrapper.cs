@@ -28,11 +28,11 @@ namespace GitHub.Services.Common
             }
         }
 
-        public IDictionary<string, object> Properties
+        public System.Collections.Generic.IDictionary<string,object> Properties
         {
             get
             {
-                return m_request.Properties;
+                return m_request.Options;
             }
         }
 
