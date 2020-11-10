@@ -135,15 +135,27 @@ namespace GitHub.Runner.Worker
                 ExecutionContext.SetGitHubContext("event_path", workflowFile);
             }
 
+            // Set GITHUB_ACTION_REPOSITORY if this Action is from a repository
+            if (Action.Reference is Pipelines.RepositoryPathReference repoPathReferenceAction &&
+                !string.Equals(repoPathReferenceAction.RepositoryType, Pipelines.PipelineConstants.SelfAlias, StringComparison.OrdinalIgnoreCase))
+            {
+                ExecutionContext.SetGitHubContext("action_repository", repoPathReferenceAction.Name);
+                ExecutionContext.SetGitHubContext("action_ref", repoPathReferenceAction.Ref);
+            }
+
             // Setup container stephost for running inside the container.
-            if (ExecutionContext.Container != null)
+            if (ExecutionContext.Global.Container != null)
             {
                 // Make sure required container is already created.
-                ArgUtil.NotNullOrEmpty(ExecutionContext.Container.ContainerId, nameof(ExecutionContext.Container.ContainerId));
+                ArgUtil.NotNullOrEmpty(ExecutionContext.Global.Container.ContainerId, nameof(ExecutionContext.Global.Container.ContainerId));
                 var containerStepHost = HostContext.CreateService<IContainerStepHost>();
-                containerStepHost.Container = ExecutionContext.Container;
+                containerStepHost.Container = ExecutionContext.Global.Container;
                 stepHost = containerStepHost;
             }
+
+            // Setup File Command Manager
+            var fileCommandManager = HostContext.CreateService<IFileCommandManager>();
+            fileCommandManager.InitializeFiles(ExecutionContext, null);
 
             // Load the inputs.
             ExecutionContext.Debug("Loading inputs");
@@ -231,14 +243,22 @@ namespace GitHub.Runner.Worker
                             handlerData,
                             inputs,
                             environment,
-                            ExecutionContext.Variables,
+                            ExecutionContext.Global.Variables,
                             actionDirectory: definition.Directory);
 
             // Print out action details
             handler.PrintActionDetails(Stage);
 
             // Run the task.
-            await handler.RunAsync(Stage);
+            try 
+            {
+                await handler.RunAsync(Stage);
+            }
+            finally 
+            {
+                fileCommandManager.ProcessFiles(ExecutionContext, ExecutionContext.Global.Container);
+            }
+
         }
 
         public bool TryEvaluateDisplayName(DictionaryContextData contextData, IExecutionContext context)
